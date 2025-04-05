@@ -34,8 +34,7 @@ def summarize_mood(journal: str) -> (int, str):
    try:
        response = model.generate_content(prompt)
        summary = response.text.strip()
-       score = get_score(summary=summary)
-       return (score, summary)
+       return summary
    except Exception as e:
        return f"Error analyzing mood: {e}"
 
