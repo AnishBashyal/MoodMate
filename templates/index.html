@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
+    <script>
+      const firebaseConfig = {
+        apiKey: "AIzaSyBbjdLloY_UKQ-Fz-2CGKOMaIfQVhmylTc",
+        authDomain: "moodmate-63b21.firebaseapp.com",
+        projectId: "moodmate-63b21",
+      };
+
+      firebase.initializeApp(firebaseConfig);
+
+      const auth = firebase.auth();
+
+      async function loginOrSignup(isSignup) {
+        const email = document.getElementById("email").value;
+        const password = document.getElementById("password").value;
+        const username = document.getElementById("username")?.value || "";
+        const fn = isSignup
+          ? auth.createUserWithEmailAndPassword
+          : auth.signInWithEmailAndPassword;
+
+        try {
+          const userCred = await fn.call(auth, email, password);
+          const token = await userCred.user.getIdToken();
+          await fetch("/sessionLogin", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ idToken: token, username }),
+          });
+          window.location.reload();
+        } catch (error) {
+          alert(error.message);
+          console.error(error);
+        }
+      }
+
+      async function logout() {
+        await fetch("/logout", { method: "POST" });
+        window.location.reload();
+      }
+
+      async function generate() {
+        const journal = document.getElementById("journal").value;
+        const res = await fetch("/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ journal }),
+        });
+        const data = await res.json();
+        if (data.error) return alert(data.error);
+
+        document.getElementById("score").innerText = data.mood_score;
+        document.getElementById("summary").innerText = data.summary;
+      }
+    </script>
+  </head>
+  <body>
+    {% if not session.user_id %}
+    <h2>Login / Signup</h2>
+    <input id="email" placeholder="Email" /><br />
+    <input id="password" type="password" placeholder="Password" /><br />
+    <input id="username" placeholder="Username" /><br />
+
+    <button onclick="loginOrSignup(false)">Login</button>
+    <button onclick="loginOrSignup(true)">Signup</button>
+    {% else %}
+    <h2>Welcome, {{ session.user_name }}</h2>
+    <textarea
+      id="journal"
+      placeholder="Write your journal..."
+      rows="5"
+      cols="40"
+    ></textarea
+    ><br />
+    <button onclick="generate()">Generate</button>
+
+    <h3>Results</h3>
+    <p><strong>Mood Score:</strong> <span id="score">-</span></p>
+    <p><strong>Summary:</strong> <span id="summary">-</span></p>
+
+    <button onclick="logout()">Logout</button>
+
+    <h3>Your Journals</h3>
+    <div id="journal-list"></div>
+
+    <script>
+      fetch("/journals")
+        .then((res) => res.json())
+        .then((data) => {
+          const div = document.getElementById("journal-list");
+          data.forEach((j) => {
+            div.innerHTML += `<p><strong>Mood:</strong> ${j.mood_score}<br>
+              <strong>Summary:</strong> ${j.summary}<br>
+              <em>${j.text}</em></p><hr>`;
+          });
+        });
+    </script>
+    {% endif %}
+  </body>
+</html>
