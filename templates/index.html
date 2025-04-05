@@ -17,17 +17,18 @@
       async function loginOrSignup(isSignup) {
         const email = document.getElementById("email").value;
         const password = document.getElementById("password").value;
+        const username = document.getElementById("username")?.value || "";
         const fn = isSignup
           ? auth.createUserWithEmailAndPassword
           : auth.signInWithEmailAndPassword;
 
         try {
-          const userCred = await fn.call(auth, email, password); // ✅ call `auth` context
+          const userCred = await fn.call(auth, email, password);
           const token = await userCred.user.getIdToken();
           await fetch("/sessionLogin", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ idToken: token }),
+            body: JSON.stringify({ idToken: token, username }),
           });
           window.location.reload();
         } catch (error) {
@@ -61,10 +62,12 @@
     <h2>Login / Signup</h2>
     <input id="email" placeholder="Email" /><br />
     <input id="password" type="password" placeholder="Password" /><br />
+    <input id="username" placeholder="Username" /><br />
+
     <button onclick="loginOrSignup(false)">Login</button>
     <button onclick="loginOrSignup(true)">Signup</button>
     {% else %}
-    <h2>Welcome, {{ session.user_email }}</h2>
+    <h2>Welcome, {{ session.user_name }}</h2>
     <textarea
       id="journal"
       placeholder="Write your journal..."
