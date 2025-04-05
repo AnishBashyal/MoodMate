@@ -1,9 +1,10 @@
 from flask import Flask, request, session, render_template, jsonify
-from firebase_admin import auth
+from firebase_admin import auth, firestore
 from firebase_service import save_journal, get_journals
 from summarizer import summarize_mood, get_score
 import secrets
 
+db = firestore.client()
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(32)
@@ -15,13 +16,29 @@ def home():
 @app.route("/sessionLogin", methods=["POST"])
 def session_login():
     id_token = request.json.get("idToken")
+    username = request.json.get("username", None)
+
     try:
         decoded = auth.verify_id_token(id_token)
-        session["user_id"] = decoded["uid"]
+        uid = decoded["uid"]
+
+        if username:
+            db.collection("users").document(uid).set({
+                "email": decoded.get("email", ""),
+                "username": username
+            })
+
+        user_doc = db.collection("users").document(uid).get()
+        user_data = user_doc.to_dict() if user_doc.exists else {}
+
+        session["user_id"] = uid
         session["user_email"] = decoded.get("email", "Unknown")
+        session["user_name"] = user_data.get("username", session["user_email"])
+
         return jsonify({"status": "ok"})
-    except:
-        return jsonify({"error": "Invalid token"}), 401
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 401
 
 @app.route("/logout", methods=["POST"])
 def logout():

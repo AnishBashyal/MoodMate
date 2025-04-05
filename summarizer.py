@@ -12,6 +12,7 @@ genai.configure(api_key=GOOGLE_API_KEY)
 model = genai.GenerativeModel("gemini-1.5-flash")
 
 # Main Function
+
 def summarize_mood(user:str,journal: str) -> (int, str):
    """
    Analyze a user's input text and return a detailed emotional summary,
