@@ -2,4 +2,7 @@ venv/
 __pycache__/
 *.pyc
 .env
+main
+node_modules/
 firebase-service-account.json
+
