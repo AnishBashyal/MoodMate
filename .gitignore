@@ -5,6 +5,5 @@ __pycache__/
 firebase-service-account.json
 node_modules
 node_modules/
-vscode/
-.vscode
+.DS_Store
 .vscode/
