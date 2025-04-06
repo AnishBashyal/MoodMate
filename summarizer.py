@@ -83,7 +83,7 @@ def get_report(user:str, summarized_moods_list: list[str], scores_list: list[int
     try:
         response = model.generate_content(prompt)
         report = response.text.strip()
-        return report  # Clamp to 0–10
+        return report 
     except Exception as e:
         print(f"Error generating report: {e}")
         return -1
