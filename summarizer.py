@@ -66,3 +66,24 @@ def get_score(summary: str) -> int:
    except Exception as e:
        print(f"Error extracting score: {e}")
        return -1  # or raise an exception
+
+def get_report(user:str, summarized_moods_list: list[str], scores_list: list[int]) -> str:
+    """
+    Get a detailed emotional summary and mood score from the user's summarized mood lists till now.
+    """
+    prompt = f"""
+        Based on these mental health tracking summaries: {", ".join(summarized_moods_list)}
+        and these corresponding scores: {", ".join(map(str, scores_list))}
+        
+        Please provide a comprehensive mental health progress report including:
+        - Overall assessment
+        - Key observations
+        - Recommendations for continued improvement
+    """
+    try:
+        response = model.generate_content(prompt)
+        report = response.text.strip()
+        return report  # Clamp to 0–10
+    except Exception as e:
+        print(f"Error generating report: {e}")
+        return -1
