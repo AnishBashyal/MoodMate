@@ -1,72 +1,119 @@
-from flask import Flask, request, session, render_template, jsonify
+from flask import Flask, request, jsonify
 from firebase_admin import auth, firestore
-from firebase_service import save_journal, get_journals
+from firebase_service import save_journal, get_journals, delete_journal
 from summarizer import summarize_mood, get_score
+from flask_cors import CORS
 import secrets
-
-db = firestore.client()
+from functools import wraps
+from chatbot import generate_chat_response
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(32)
+CORS(app, supports_credentials=True)
 
-@app.route("/")
-def home():
-    return render_template("index.html", session=session)
+db = firestore.client()
 
-@app.route("/sessionLogin", methods=["POST"])
-def session_login():
-    id_token = request.json.get("idToken")
-    username = request.json.get("username", None)
-
-    try:
-        decoded = auth.verify_id_token(id_token)
-        uid = decoded["uid"]
-
-        if username:
-            db.collection("users").document(uid).set({
-                "email": decoded.get("email", ""),
-                "username": username
-            })
-
-        user_doc = db.collection("users").document(uid).get()
-        user_data = user_doc.to_dict() if user_doc.exists else {}
-
-        session["user_id"] = uid
-        session["user_email"] = decoded.get("email", "Unknown")
-        session["user_name"] = user_data.get("username", session["user_email"])
-
-        return jsonify({"status": "ok"})
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 401
-
-@app.route("/logout", methods=["POST"])
-def logout():
-    session.clear()
-    return jsonify({"status": "logged out"})
+def verify_firebase_token():
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise Exception("Missing or invalid Authorization header")
+    id_token = auth_header.split("Bearer ")[-1]
+    decoded = auth.verify_id_token(id_token)
+    return decoded  # contains 'uid', 'email', etc.
 
 @app.route("/generate", methods=["POST"])
 def generate():
-    if "user_id" not in session:
-        return jsonify({"error": "Not logged in"}), 401
+    try:
+        user = verify_firebase_token()
+        text = request.json.get("journal", "")
+        firebase_user = auth.get_user(user["uid"])
+        if firebase_user.display_name:
+            username = firebase_user.display_name
+        else:
+            username = firebase_user.email.split("@")[0]
+            
+        mood_score = get_score(text)
+        summary = summarize_mood(username, text)
 
-    text = request.json.get("journal", "")
-    mood_score = get_score(text)
-    summary = summarize_mood(text)
+        return jsonify({
+            "mood_score": mood_score,
+            "summary": summary
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 401
 
-    save_journal(session["user_id"], text, mood_score, summary)
+@app.route("/save", methods=["POST"])
+def save():
+    try:
+        user = verify_firebase_token()
+        text = request.json.get("journal", "")
+        mood_score = request.json.get("mood_score")
+        summary = request.json.get("summary")
 
-    return jsonify({
-        "mood_score": mood_score,
-        "summary": summary
-    })
+        if not all([text, mood_score, summary]):
+            return jsonify({"error": "Missing required fields"}), 400
+
+        journal_id = save_journal(user["uid"], text, mood_score, summary)
+        return jsonify({
+            "id": journal_id,
+            "message": "Journal entry saved successfully"
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 401
 
 @app.route("/journals", methods=["GET"])
 def journals():
-    if "user_id" not in session:
-        return jsonify([])
-    return jsonify(get_journals(session["user_id"]))
+    try:
+        user = verify_firebase_token()
+        return jsonify(get_journals(user["uid"]))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 401
 
+@app.route("/journals/<journal_id>", methods=["DELETE"])
+def delete_journal_entry(journal_id):
+    try:
+        user = verify_firebase_token()
+        delete_journal(user["uid"], journal_id)
+        return jsonify({"message": "Journal entry deleted successfully"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 401
+
+def require_auth(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        try:
+            verify_firebase_token()
+            return f(*args, **kwargs)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 401
+    return decorated_function
+
+@app.route("/chat", methods=["POST"])
+@require_auth
+def chat():
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+
+        required_fields = ["message", "entry_id", "entry_content", "entry_summary", "entry_mood", "conversation_history"]
+        for field in required_fields:
+            if field not in data:
+                return jsonify({"error": f"Missing required field: {field}"}), 400
+
+        response = generate_chat_response(
+            message=data["message"],
+            entry_content=data["entry_content"],
+            entry_summary=data["entry_summary"],
+            entry_mood=float(data["entry_mood"]),
+            conversation_history=data["conversation_history"]
+        )
+
+        return jsonify({"response": response})
+
+    except Exception as e:
+        print(f"Error in chat endpoint: {str(e)}")
+        return jsonify({"error": "Failed to process chat message"}), 500
 
 if __name__ == "__main__":
     app.run(debug=True)
